@@ -37,6 +37,10 @@ export const Route = createRootRoute({
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
       { name: "twitter:site", content: "@Lovable" },
+      { name: "twitter:title", content: "Shield · Aegis Forensic" },
+      { name: "twitter:description", content: "Real-time deepfake detection dashboard." },
+      { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/168664b1-8bdc-4046-9f37-6ee80521e2fe/id-preview-bc19e298--772afa96-8e1a-4df4-ae01-74f784d79d5d.lovable.app-1776583426942.png" },
+      { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/168664b1-8bdc-4046-9f37-6ee80521e2fe/id-preview-bc19e298--772afa96-8e1a-4df4-ae01-74f784d79d5d.lovable.app-1776583426942.png" },
     ],
     links: [
       { rel: "stylesheet", href: appCss },
