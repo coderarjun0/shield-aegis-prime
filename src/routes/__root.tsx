@@ -1,4 +1,5 @@
 import { Outlet, Link, createRootRoute, HeadContent, Scripts } from "@tanstack/react-router";
+import { Shield } from "lucide-react";
 
 import appCss from "../styles.css?url";
 
@@ -72,5 +73,35 @@ function RootShell({ children }: { children: React.ReactNode }) {
 }
 
 function RootComponent() {
-  return <Outlet />;
+  return (
+    <div className="flex min-h-screen flex-col bg-background text-foreground">
+      <header className="sticky top-0 z-50 w-full border-b border-white/10 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+        <div className="container flex h-14 items-center px-4">
+          <div className="mr-4 flex">
+            <Link to="/" className="mr-6 flex items-center space-x-2 text-primary transition-opacity hover:opacity-80">
+              <Shield className="h-5 w-5" />
+              <span className="font-display text-sm uppercase tracking-widest text-foreground font-semibold">Shield Aegis Prime</span>
+            </Link>
+            <nav className="flex items-center space-x-6 text-sm font-medium">
+              <Link
+                to="/"
+                className="transition-colors hover:text-foreground/80 text-muted-foreground [&.active]:text-foreground"
+              >
+                Home
+              </Link>
+              <Link
+                to="/history"
+                className="transition-colors hover:text-foreground/80 text-muted-foreground [&.active]:text-foreground"
+              >
+                History
+              </Link>
+            </nav>
+          </div>
+        </div>
+      </header>
+      <main className="flex-1 flex flex-col">
+        <Outlet />
+      </main>
+    </div>
+  );
 }

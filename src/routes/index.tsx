@@ -1,196 +1,294 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
-import { motion } from "framer-motion";
-import { Shield, PanelRightOpen, Activity, Cpu, Radar } from "lucide-react";
-import { useForensicScan, type ScanState } from "@/hooks/useForensicScan";
-import { VideoOverlay } from "@/components/shield/VideoOverlay";
-import { ForensicSidebar } from "@/components/shield/ForensicSidebar";
-import { DevModePanel } from "@/components/shield/DevModePanel";
-import { ConfidenceGauge } from "@/components/shield/ConfidenceGauge";
-import { DetectionBars } from "@/components/shield/DetectionBars";
+import { useState, useRef } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { UploadCloud, FileVideo, Image as ImageIcon, ShieldAlert, ShieldCheck, HelpCircle, Loader2 } from "lucide-react";
+import { useMutation } from "@tanstack/react-query";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { toast } from "sonner";
 
 export const Route = createFileRoute("/")({
-  head: () => ({
-    meta: [
-      { title: "Shield · Aegis Forensic Deepfake Detection" },
-      {
-        name: "description",
-        content:
-          "Shield is a real-time deepfake detection dashboard with biological signal analysis, pixel forensics and provenance verification.",
-      },
-      { property: "og:title", content: "Shield · Aegis Forensic" },
-      { property: "og:description", content: "Cyber-forensic deepfake detection suite." },
-    ],
-  }),
-  component: ShieldDashboard,
+  component: UploadDashboard,
 });
 
-function ShieldDashboard() {
-  const { state, confidence, metrics, evidence, transition, runScan } = useForensicScan();
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+type ScanResult = {
+  id: string;
+  filename: string;
+  thumbnail: string;
+  probability: number;
+  type: string;
+  timestamp: string;
+};
+
+function UploadDashboard() {
+  const [file, setFile] = useState<File | null>(null);
+  const [preview, setPreview] = useState<string | null>(null);
+  const [dragActive, setDragActive] = useState(false);
+  const [result, setResult] = useState<ScanResult | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const mutation = useMutation({
+    mutationFn: async (file: File) => {
+      const formData = new FormData();
+      formData.append("media", file);
+      
+      const res = await fetch("/api/analyze", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.error || "Failed to analyze file");
+      }
+
+      return res.json();
+    },
+    onSuccess: (data, file) => {
+      const isVideo = file.type.startsWith("video/");
+      
+      const newResult: ScanResult = {
+        id: crypto.randomUUID(),
+        filename: file.name,
+        thumbnail: preview || "",
+        probability: data.probability || 0,
+        type: isVideo ? "video" : "image",
+        timestamp: new Date().toISOString(),
+      };
+
+      setResult(newResult);
+
+      const history = JSON.parse(localStorage.getItem("scanHistory") || "[]");
+      localStorage.setItem("scanHistory", JSON.stringify([newResult, ...history]));
+      toast.success("Analysis complete");
+    },
+    onError: (error) => {
+      toast.error(error.message);
+    }
+  });
+
+  const validateAndSetFile = (selectedFile: File) => {
+    const isVideo = selectedFile.type.startsWith("video/");
+    const isImage = selectedFile.type.startsWith("image/");
+    const maxSize = isVideo ? 50 * 1024 * 1024 : 10 * 1024 * 1024;
+
+    if (!isVideo && !isImage) {
+      toast.error("Unsupported file type. Please upload a JPG, PNG, WEBP, MP4, or MOV.");
+      return;
+    }
+
+    if (selectedFile.size > maxSize) {
+      toast.error(`File too large. Maximum size is ${isVideo ? "50MB" : "10MB"}.`);
+      return;
+    }
+
+    setFile(selectedFile);
+    const objectUrl = URL.createObjectURL(selectedFile);
+    setPreview(objectUrl);
+    setResult(null);
+  };
+
+  const handleDrag = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.type === "dragenter" || e.type === "dragover") {
+      setDragActive(true);
+    } else if (e.type === "dragleave") {
+      setDragActive(false);
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActive(false);
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      validateAndSetFile(e.dataTransfer.files[0]);
+    }
+  };
+
+  const handleScan = () => {
+    if (file) {
+      mutation.mutate(file);
+    }
+  };
+
+  const reset = () => {
+    setFile(null);
+    setPreview(null);
+    setResult(null);
+    mutation.reset();
+  };
 
   return (
-    <div className="min-h-screen relative">
-      <BackgroundFX />
+    <div className="container max-w-4xl py-10">
+      <h1 className="text-3xl font-display font-bold md:text-4xl">Deepfake Scanner</h1>
+      <p className="mt-2 text-muted-foreground pb-8 border-b border-border/40 mb-8">
+        Upload an image or video to verify its authenticity using the Aegis Engine.
+      </p>
 
-      <div className="relative z-10 flex">
-        <main
-          className={`flex-1 px-6 lg:px-10 py-6 transition-all duration-500 ${
-            sidebarOpen ? "lg:mr-[28rem]" : ""
-          }`}
-        >
-          <Header state={state} onToggleSidebar={() => setSidebarOpen((v) => !v)} sidebarOpen={sidebarOpen} />
-
-          <div className="mt-6 grid grid-cols-1 xl:grid-cols-3 gap-6">
-            <div className="xl:col-span-2 space-y-6">
-              <VideoOverlay state={state} />
-
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                <StatCard icon={Activity} label="BPM Signal" value={state === "VERIFIED" ? "70" : state === "FLAGGED" ? "—" : "··"} tone={state === "VERIFIED" ? "success" : state === "FLAGGED" ? "danger" : "muted"} />
-                <StatCard icon={Cpu} label="Model" value="v4.2" tone="primary" />
-                <StatCard icon={Radar} label="Frames" value="7,420" tone="muted" />
-                <StatCard icon={Shield} label="Provenance" value={state === "VERIFIED" ? "C2PA ✓" : "Broken"} tone={state === "VERIFIED" ? "success" : "danger"} />
-              </div>
-            </div>
-
-            <div className="space-y-6">
-              <DevModePanel state={state} onTransition={transition} onRunScan={runScan} />
-
-              {/* Inline summary card (visible when sidebar closed on desktop too) */}
-              <div className="glass rounded-2xl p-5">
-                <div className="flex items-center gap-2 mb-4">
-                  <Shield className="h-3.5 w-3.5 text-primary" />
-                  <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
-                    Live Summary
-                  </span>
+      <div className="grid gap-8 md:grid-cols-2">
+        <div className="space-y-4">
+          <Card 
+            className={`border-dashed border-2 transition-colors ${dragActive ? 'border-primary bg-primary/5' : 'border-border/40'} ${file && !result ? 'border-none' : ''}`}
+            onDragEnter={handleDrag}
+            onDragLeave={handleDrag}
+            onDragOver={handleDrag}
+            onDrop={handleDrop}
+          >
+            {!file ? (
+              <CardContent className="flex flex-col items-center justify-center p-12 text-center h-[400px]">
+                <div className="rounded-full bg-primary/10 p-4 mb-4">
+                  <UploadCloud className="h-8 w-8 text-primary" />
                 </div>
-                <div className="grid place-items-center mb-4">
-                  <ConfidenceGauge value={confidence} state={state} />
+                <h3 className="text-lg font-semibold mb-1">Drag & drop your media</h3>
+                <p className="text-sm text-muted-foreground mb-4">
+                  or click to browse your files
+                </p>
+                <input
+                  type="file"
+                  className="hidden"
+                  ref={fileInputRef}
+                  accept="image/jpeg,image/png,image/webp,video/mp4,video/quicktime"
+                  onChange={(e) => {
+                    if (e.target.files?.[0]) validateAndSetFile(e.target.files[0]);
+                  }}
+                />
+                <Button onClick={() => fileInputRef.current?.click()} variant="secondary">
+                  Browse Files
+                </Button>
+                <div className="mt-6 flex items-center justify-center gap-4 text-xs text-muted-foreground">
+                  <span className="flex items-center gap-1.5"><ImageIcon className="w-3.5 h-3.5" /> Max 10MB</span>
+                  <span className="flex items-center gap-1.5"><FileVideo className="w-3.5 h-3.5" /> Max 50MB</span>
                 </div>
-                <DetectionBars metrics={metrics} state={state} />
+              </CardContent>
+            ) : (
+              <div className="relative h-[400px] bg-background/50 overflow-hidden rounded-xl border border-border/40">
+                {file.type.startsWith("video/") ? (
+                  <video src={preview!} controls className="w-full h-full object-contain bg-black/5" />
+                ) : (
+                  <img src={preview!} alt="Upload preview" className="w-full h-full object-contain bg-black/5" />
+                )}
+                
+                {mutation.isPending && (
+                  <div className="absolute inset-0 bg-background/80 backdrop-blur-sm flex flex-col items-center justify-center z-10">
+                    <Loader2 className="h-10 w-10 text-primary animate-spin mb-4" />
+                    <p className="font-medium animate-pulse">Running Aegis Scan...</p>
+                    <p className="text-xs text-muted-foreground mt-2 max-w-[200px] text-center">
+                      {file.type.startsWith("video/") 
+                        ? "Video analysis in progress. Please wait up to 2 minutes." 
+                        : "Applying neural layers. This will take a moment."}
+                    </p>
+                  </div>
+                )}
               </div>
-            </div>
+            )}
+          </Card>
+          
+          <div className="flex gap-4">
+            {!result ? (
+              <Button 
+                onClick={handleScan} 
+                disabled={!file || mutation.isPending} 
+                className="w-full h-12 text-md"
+              >
+                {mutation.isPending ? "Analyzing..." : "Run Analysis"}
+              </Button>
+            ) : (
+              <Button onClick={reset} variant="outline" className="w-full h-12 text-md">
+                Scan another file
+              </Button>
+            )}
+            {file && !mutation.isPending && !result && (
+              <Button onClick={reset} variant="ghost" className="h-12 px-8">Clear</Button>
+            )}
           </div>
+        </div>
 
-          <footer className="mt-10 pb-6 flex items-center justify-between text-[10px] font-mono uppercase tracking-[0.2em] text-muted-foreground/70">
-            <span>Aegis Forensic · Build 2026.4.19</span>
-            <span>Edge inference · 1.84s avg</span>
-          </footer>
-        </main>
+        <AnimatePresence mode="wait">
+          {result && (
+            <motion.div
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              className="space-y-6"
+            >
+              <Card>
+                <CardHeader className="pb-4">
+                  <CardTitle className="text-sm font-medium uppercase tracking-wider text-muted-foreground">Scan Result</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <ResultVisualizer probability={result.probability} />
+                </CardContent>
+              </Card>
 
-        <ForensicSidebar
-          open={sidebarOpen}
-          onClose={() => setSidebarOpen(false)}
-          state={state}
-          confidence={confidence}
-          metrics={metrics}
-          evidence={evidence}
-        />
+              <Card>
+                <CardHeader className="pb-3 border-b border-white/5">
+                  <CardTitle className="text-sm">Technical Summary</CardTitle>
+                </CardHeader>
+                <CardContent className="pt-4 space-y-3">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Filename</span>
+                    <span className="font-mono text-xs">{result.filename}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Media Type</span>
+                    <span className="capitalize">{result.type}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Confidence Score</span>
+                    <span className="font-mono text-xs">{(result.probability * 100).toFixed(2)}%</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Timestamp</span>
+                    <span className="font-mono text-xs">{new Date(result.timestamp).toLocaleTimeString()}</span>
+                  </div>
+                </CardContent>
+              </Card>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     </div>
   );
 }
 
-function Header({
-  state,
-  onToggleSidebar,
-  sidebarOpen,
-}: {
-  state: ScanState;
-  onToggleSidebar: () => void;
-  sidebarOpen: boolean;
-}) {
-  const stateColor =
-    state === "FLAGGED"
-      ? "bg-destructive"
-      : state === "VERIFIED"
-        ? "bg-success"
-        : state === "SCANNING"
-          ? "bg-primary"
-          : "bg-muted-foreground";
+function ResultVisualizer({ probability }: { probability: number }) {
+  const isDeepfake = probability > 0.7;
+  const isAuthentic = probability < 0.3;
+  
+  const status = isDeepfake ? "DEEPFAKE DETECTED" : isAuthentic ? "LIKELY AUTHENTIC" : "INCONCLUSIVE";
+  const color = isDeepfake ? "text-destructive" : isAuthentic ? "text-success" : "text-amber-500";
+  const bg = isDeepfake ? "bg-destructive/10 border-destructive/20" : isAuthentic ? "bg-success/10 border-success/20" : "bg-amber-500/10 border-amber-500/20";
+  const Icon = isDeepfake ? ShieldAlert : isAuthentic ? ShieldCheck : HelpCircle;
 
   return (
-    <div className="flex items-center justify-between glass rounded-2xl px-5 py-3.5">
-      <div className="flex items-center gap-3">
-        <div className="relative">
-          <div className="grid h-10 w-10 place-items-center rounded-xl bg-gradient-to-br from-primary to-[oklch(0.6_0.2_280)] glow-primary">
-            <Shield className="h-5 w-5 text-primary-foreground" />
-          </div>
-          <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full ring-2 ring-background animate-pulse-slow bg-success" />
-        </div>
-        <div>
-          <h1 className="font-display text-lg leading-tight">
-            Shield <span className="text-muted-foreground font-normal">/ Aegis Forensic</span>
-          </h1>
-          <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
-            <span className={`h-1 w-1 rounded-full ${stateColor}`} />
-            <span>State · {state}</span>
-          </div>
-        </div>
+    <div className="flex flex-col items-center justify-center py-6 text-center">
+      <div className={`p-4 rounded-full border mb-6 ${bg}`}>
+        <Icon className={`w-12 h-12 ${color}`} />
+      </div>
+      
+      <div className={`text-sm font-bold tracking-widest ${color} mb-2`}>
+        {status}
+      </div>
+      
+      <div className="text-6xl font-display font-light mb-6 tracking-tight">
+        {(probability * 100).toFixed(1)}<span className="text-3xl text-muted-foreground ml-1">%</span>
       </div>
 
-      <motion.button
-        whileHover={{ scale: 1.04 }}
-        whileTap={{ scale: 0.96 }}
-        transition={{ type: "spring", stiffness: 400, damping: 18 }}
-        onClick={onToggleSidebar}
-        className="hidden lg:flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs hover:bg-white/10 transition"
-      >
-        <PanelRightOpen className={`h-3.5 w-3.5 transition-transform ${sidebarOpen ? "rotate-180" : ""}`} />
-        <span>{sidebarOpen ? "Hide" : "Show"} report</span>
-      </motion.button>
-
-      <motion.button
-        whileHover={{ scale: 1.04 }}
-        whileTap={{ scale: 0.96 }}
-        transition={{ type: "spring", stiffness: 400, damping: 18 }}
-        onClick={onToggleSidebar}
-        className="lg:hidden rounded-xl border border-white/10 bg-white/5 p-2"
-      >
-        <PanelRightOpen className="h-4 w-4" />
-      </motion.button>
+      <div className="w-full relative h-2 bg-secondary rounded-full overflow-hidden">
+         <motion.div 
+           initial={{ width: 0 }}
+           animate={{ width: `${probability * 100}%` }}
+           transition={{ duration: 1, ease: "easeOut" }}
+           className={`absolute left-0 top-0 bottom-0 ${isDeepfake ? "bg-destructive" : isAuthentic ? "bg-success" : "bg-amber-500"}`}
+         />
+      </div>
+      <div className="w-full flex justify-between mt-2 text-[10px] uppercase text-muted-foreground font-mono">
+        <span>Authentic</span>
+        <span>Deepfake</span>
+      </div>
     </div>
-  );
-}
-
-function StatCard({
-  icon: Icon,
-  label,
-  value,
-  tone,
-}: {
-  icon: typeof Shield;
-  label: string;
-  value: string;
-  tone: "primary" | "success" | "danger" | "muted";
-}) {
-  const colorMap = {
-    primary: "text-primary",
-    success: "text-success",
-    danger: "text-destructive",
-    muted: "text-muted-foreground",
-  } as const;
-  return (
-    <motion.div
-      whileHover={{ y: -2 }}
-      transition={{ type: "spring", stiffness: 400, damping: 20 }}
-      className="glass rounded-xl px-4 py-3"
-    >
-      <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
-        <Icon className={`h-3 w-3 ${colorMap[tone]}`} />
-        <span>{label}</span>
-      </div>
-      <div className={`mt-1 font-display text-xl ${colorMap[tone]}`}>{value}</div>
-    </motion.div>
-  );
-}
-
-function BackgroundFX() {
-  return (
-    <>
-      <div className="fixed inset-0 neural-grid opacity-[0.35] pointer-events-none" />
-      <div className="fixed -top-40 -left-40 h-[420px] w-[420px] rounded-full bg-primary/15 blur-3xl pointer-events-none" />
-      <div className="fixed -bottom-40 -right-40 h-[480px] w-[480px] rounded-full bg-[oklch(0.6_0.2_280)]/15 blur-3xl pointer-events-none" />
-    </>
   );
 }
